@@ -1,0 +1,8 @@
+.env
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.DS_Store
+# local copy of the kit (the problem statement must not be published)
+docs/
