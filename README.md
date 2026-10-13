@@ -1,42 +1,56 @@
 # Employee Attendance & Analytics API
 
-FastAPI + MongoDB (PyMongo). All application code is in `app/main.py`.
+A REST API for employee attendance tracking and analytics, built with **FastAPI** and **MongoDB** using PyMongo.
 
-## Run
+## Requirements
+
+- Python 3.13+
+- MongoDB 6.0+
+
+## Setup
+
+Create and activate a virtual environment.
+
+**Windows PowerShell:**
+
+```powershell
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+```
+
+Install dependencies:
 
 ```bash
-python -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt
-cp .env.example .env          # or export MONGO_URI / MONGO_DB (real env vars win over .env)
-python sample_seed.py         # optional: loads the nine sample documents
+python -m pip install -r requirements.txt
+```
+
+Copy `.env.example` to `.env` and configure `MONGO_URI` and `MONGO_DB` for your MongoDB instance. Do not commit `.env` or database credentials.
+
+Ensure MongoDB is running, then start the API:
+
+```bash
 uvicorn app.main:app --port 8000
 ```
 
-Needs MongoDB 6.0+ (tested on 7.0). Indexes are created at startup and the step is idempotent. Interactive docs are at `http://localhost:8000/docs`.
+Interactive API documentation: http://localhost:8000/docs
 
 ## Tests
 
+Install development dependencies and run the test suite:
+
 ```bash
-pip install -r requirements-dev.txt
-pytest -q                     # uses database "attendance_test" and wipes it
+python -m pip install -r requirements-dev.txt
+python -m pytest -x -vv
 ```
 
-The tests cover R1-R5 edge times, punch-in/punch-out/PATCH races, ties at the leaderboard cutoff, employees without logs, weekend records, mid-month joiners, an overnight shift, the trend gap filling and moving average, and the IXSCAN check of the explain endpoint. I also checked the explain endpoint against a 100k-record dataset: every plan is IXSCAN with no COLLSCAN, and every endpoint answers in under 150 ms locally.
+The tests cover validation, attendance rules, concurrency, regularization, monthly analytics, department summaries, trends, leaderboards, and query-plan index usage.
 
-## Layout of `app/main.py`
+## Design Notes
 
-1. Config and Mongo client (`tz_aware=True`)
-2. Index setup in the FastAPI lifespan
-3. Time helpers and rules R1-R5 (`attendance_date`, `shift_window`, `derive_fields`, ...)
-4. Validation types and request models
-5. Output converters (BSON to API JSON, epoch ms)
-6. Query and pipeline builders, shared by each endpoint and `/admin/explain`
-7. Endpoints
+- Unique indexes protect employee creation and attendance punch-in.
+- Conditional updates protect punch-out from concurrent requests.
+- Optimistic concurrency control protects attendance regularization history.
+- Exact rounding is used for work-hour and analytics calculations.
+- MongoDB indexes are created at application startup.
 
-## Notes
-
-- Concurrency: unique indexes for punch-in and employee creation. A conditional `find_one_and_update` (`punch_out: null`) for punch-out. Optimistic concurrency for PATCH, where the loser gets 409 and no history entry is lost.
-- Rounding is half-up and exact: `Decimal` for work hours, `Fraction` for monthly and summary figures, and an integer `floor((2n + d) / 2d)` expression inside the trend pipeline.
-- PATCH: derived fields sent by a client are ignored. An explicit `null` for `status`, `punch_in` or `punch_out` is a 422 (the schema does not allow null).
-- Trend: a range "exceeds 92 days" when it has more than 92 calendar days, both ends included.
-- Nothing is missing from the contract.
+See [DECISIONS.md](DECISIONS.md) for implementation decisions and [REVIEW.md](REVIEW.md) for the code review.
